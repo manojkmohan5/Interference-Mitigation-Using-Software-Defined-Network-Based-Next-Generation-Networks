@@ -1,0 +1,17 @@
+ARP SPOOFING/ARP POISONING ATTACK Detection & Mitigation
+
+
+build the ARP data structure 
+  mac_to_ip[dpid][mac_address] = ipaddress
+
+1. look the ARP Request & ARP Reply  and build the data structure
+    mac_to_ip[dpid][a.src_mac] = ip
+
+2. When the ARP Packet gets in, check the src mac against the Table
+   if mac is not present in the table 
+   -   its a new entry, add with ip and mac
+   if mac is present in the table,
+     check the src ip, in port against the stored one,
+     if it is different ,  ITS A ARP ATTACK, Declare it as ATTACK.
+
+-  Mitigation : Block the Port 
