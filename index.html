@@ -1,0 +1,1087 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="How an SDN controller catches ARP poisoning by holding every MAC address to the identity it first claimed - the workflow, architecture and reasoning behind the project.">
+<style>
+  :root{color-scheme:light dark}
+  body{margin:0}
+  img{max-width:100%}
+  [hidden]{display:none!important}
+</style>
+<title>The Lying Packet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+
+<style>
+:root{
+  --paper:#E8ECEE;
+  --surface:#F7F9FA;
+  --raised:#FFFFFF;
+  --ink:#151C24;
+  --ink-2:#47555F;
+  --ink-3:#64717B;
+  --rule:#C9D2D7;
+  --rule-soft:#DCE2E6;
+  --accent:#0D6B84;
+  --accent-soft:rgba(13,107,132,.09);
+  --accent-line:rgba(13,107,132,.32);
+  --alarm:#A93A2A;
+  --alarm-soft:rgba(169,58,42,.09);
+  --alarm-line:rgba(169,58,42,.34);
+  --trust:#2C6E52;
+  --trust-soft:rgba(44,110,82,.10);
+
+  --term-bg:#10171C;
+  --term-fg:#D6E2E8;
+  --term-dim:#5FA8BE;
+  --term-cmt:#6E828C;
+
+  --f-display:'Archivo','Helvetica Neue',Arial,sans-serif;
+  --f-body:'Source Serif 4',Georgia,'Times New Roman',serif;
+  --f-mono:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+
+  --measure:41rem;
+  --wide:64rem;
+}
+
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#101619;
+    --surface:#182026;
+    --raised:#1D262C;
+    --ink:#E4EAED;
+    --ink-2:#A9B6BD;
+    --ink-3:#8695A0;
+    --rule:#2C3941;
+    --rule-soft:#242E35;
+    --accent:#3FA9C6;
+    --accent-soft:rgba(63,169,198,.11);
+    --accent-line:rgba(63,169,198,.36);
+    --alarm:#E3705C;
+    --alarm-soft:rgba(227,112,92,.12);
+    --alarm-line:rgba(227,112,92,.38);
+    --trust:#63BC90;
+    --trust-soft:rgba(99,188,144,.12);
+    --term-bg:#0A1013;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#101619;
+  --surface:#182026;
+  --raised:#1D262C;
+  --ink:#E4EAED;
+  --ink-2:#A9B6BD;
+  --ink-3:#8695A0;
+  --rule:#2C3941;
+  --rule-soft:#242E35;
+  --accent:#3FA9C6;
+  --accent-soft:rgba(63,169,198,.11);
+  --accent-line:rgba(63,169,198,.36);
+  --alarm:#E3705C;
+  --alarm-soft:rgba(227,112,92,.12);
+  --alarm-line:rgba(227,112,92,.38);
+  --trust:#63BC90;
+  --trust-soft:rgba(99,188,144,.12);
+  --term-bg:#0A1013;
+}
+
+*{box-sizing:border-box}
+
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--f-body);
+  font-size:17px;
+  line-height:1.68;
+  -webkit-font-smoothing:antialiased;
+}
+
+.skip{
+  position:absolute;left:-9999px;top:0;z-index:50;
+  background:var(--accent);color:#fff;padding:.6rem 1rem;
+  font-family:var(--f-mono);font-size:.8rem;border-radius:0 0 4px 0;
+}
+.skip:focus{left:0}
+
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:2px}
+
+.shell{max-width:var(--wide);margin:0 auto;padding:0 1.5rem 5rem}
+.col{max-width:var(--measure)}
+
+p{margin:0 0 1.1em}
+p:last-child{margin-bottom:0}
+strong{font-weight:600}
+a{color:var(--accent);text-underline-offset:3px;text-decoration-thickness:1px}
+
+.eyebrow{
+  font-family:var(--f-mono);font-size:.7rem;font-weight:500;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);
+  margin:0 0 .9rem;
+}
+
+/* ---------- masthead ---------- */
+.mast{
+  border-bottom:1px solid var(--rule);
+  padding:3.4rem 0 2.6rem;
+  margin-bottom:3.2rem;
+}
+h1{
+  font-family:var(--f-display);
+  font-weight:800;
+  font-size:clamp(2.6rem,8vw,4.5rem);
+  line-height:.98;
+  letter-spacing:-.028em;
+  margin:0 0 1.1rem;
+  text-wrap:balance;
+}
+.standfirst{
+  font-size:clamp(1.08rem,2.2vw,1.28rem);
+  line-height:1.55;
+  color:var(--ink-2);
+  max-width:34rem;
+  margin:0 0 2rem;
+}
+.standfirst em{color:var(--ink);font-style:italic}
+
+.capture{
+  background:var(--term-bg);
+  border-radius:5px;
+  border:1px solid rgba(255,255,255,.06);
+  padding:1rem 1.15rem;
+  overflow-x:auto;
+  font-family:var(--f-mono);
+  font-size:.78rem;
+  line-height:1.9;
+  color:var(--term-fg);
+  white-space:nowrap;
+}
+.capture .t{color:var(--term-cmt)}
+.capture .k{color:var(--term-dim)}
+.capture .lie{color:#E3705C;font-weight:600}
+.capture-note{
+  display:flex;align-items:center;gap:.55rem;
+  margin-top:.85rem;
+  font-family:var(--f-mono);font-size:.74rem;color:var(--alarm);
+}
+.dot{
+  width:7px;height:7px;border-radius:50%;background:var(--alarm);flex:none;
+  animation:pulse 2.4s ease-in-out infinite;
+}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.dot{animation:none}}
+
+.simlink{
+  display:inline-flex;align-items:center;gap:.6rem;margin-top:1.6rem;
+  font-family:var(--f-mono);font-size:.78rem;font-weight:500;
+  text-decoration:none;color:var(--accent);
+  background:var(--accent-soft);border:1px solid var(--accent-line);
+  border-radius:4px;padding:.6rem .9rem;
+  transition:background .14s;
+}
+.simlink:hover{background:var(--surface)}
+.simlink .arw{font-size:1rem;line-height:1}
+
+.chips{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:2rem}
+.chip{
+  font-family:var(--f-mono);font-size:.7rem;letter-spacing:.04em;
+  color:var(--ink-2);background:var(--surface);
+  border:1px solid var(--rule-soft);border-radius:3px;
+  padding:.28rem .6rem;
+}
+
+/* ---------- contents ---------- */
+.toc{
+  border-top:1px solid var(--rule-soft);
+  border-bottom:1px solid var(--rule-soft);
+  padding:1.2rem 0;
+  margin-bottom:3.4rem;
+}
+.toc ol{
+  list-style:none;margin:0;padding:0;
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(13rem,1fr));
+  gap:.45rem 1.6rem;
+  counter-reset:toc;
+}
+.toc a{
+  font-family:var(--f-mono);font-size:.76rem;
+  text-decoration:none;color:var(--ink-2);
+  display:flex;gap:.6rem;padding:.15rem 0;
+}
+.toc a:hover{color:var(--accent)}
+.toc a::before{
+  counter-increment:toc;content:counter(toc,decimal-leading-zero);
+  color:var(--ink-3);font-size:.7rem;
+}
+
+/* ---------- sections ---------- */
+section{margin-bottom:4.4rem;scroll-margin-top:1.5rem}
+h2{
+  font-family:var(--f-display);font-weight:700;
+  font-size:clamp(1.7rem,3.6vw,2.3rem);
+  line-height:1.12;letter-spacing:-.018em;
+  margin:0 0 1.3rem;text-wrap:balance;
+}
+h3{
+  font-family:var(--f-display);font-weight:600;
+  font-size:1.05rem;letter-spacing:-.005em;
+  margin:2.2rem 0 .7rem;
+}
+.lede{font-size:1.13rem;line-height:1.6;color:var(--ink-2)}
+
+/* plain-language aside */
+.plain{
+  border-left:2px solid var(--accent-line);
+  background:var(--accent-soft);
+  padding:1.1rem 1.3rem;
+  margin:1.8rem 0;
+  border-radius:0 4px 4px 0;
+}
+.plain .eyebrow{color:var(--accent);margin-bottom:.5rem}
+.plain p{font-style:italic;color:var(--ink-2);margin-bottom:.7em}
+
+/* ---------- figures ---------- */
+figure{margin:2.4rem 0;max-width:var(--wide)}
+figure svg{display:block;width:100%;height:auto;max-width:100%}
+.figwrap{
+  background:var(--surface);
+  border:1px solid var(--rule-soft);
+  border-radius:6px;
+  padding:1.4rem 1.2rem;
+  overflow-x:auto;
+}
+figcaption{
+  font-family:var(--f-mono);font-size:.74rem;line-height:1.65;
+  color:var(--ink-3);margin-top:.9rem;max-width:46rem;
+}
+
+.dgm{color:var(--ink-2)}
+.dgm .box{fill:var(--raised);stroke:var(--rule);stroke-width:1.25}
+.dgm .panel{fill:var(--surface);stroke:var(--rule-soft);stroke-width:1.25}
+.dgm .accbox{fill:var(--accent-soft);stroke:var(--accent-line);stroke-width:1.4}
+.dgm .badbox{fill:var(--alarm-soft);stroke:var(--alarm);stroke-width:1.4}
+.dgm .name{fill:var(--ink);font-family:var(--f-display);font-weight:600;font-size:13px}
+.dgm .name-acc{fill:var(--accent);font-family:var(--f-display);font-weight:700;font-size:13px}
+.dgm .name-bad{fill:var(--alarm);font-family:var(--f-display);font-weight:700;font-size:13px}
+.dgm .sub{fill:var(--ink-3);font-family:var(--f-mono);font-weight:400;font-size:10px}
+.dgm .sub-bad{fill:var(--alarm);font-family:var(--f-mono);font-weight:400;font-size:10px}
+.dgm .sub-acc{fill:var(--accent);font-family:var(--f-mono);font-weight:400;font-size:10px}
+.dgm .data{fill:var(--ink-2);font-family:var(--f-mono);font-weight:400;font-size:10.5px}
+.dgm .eb{fill:var(--ink-3);font-family:var(--f-mono);font-weight:500;font-size:10px;letter-spacing:.14em}
+.dgm .eb-bad{fill:var(--alarm);font-family:var(--f-mono);font-weight:500;font-size:10px;letter-spacing:.14em}
+.dgm .eb-acc{fill:var(--accent);font-family:var(--f-mono);font-weight:500;font-size:10px;letter-spacing:.14em}
+.dgm .edge{stroke:var(--ink-3);stroke-width:1.3;fill:none}
+.dgm .edge-bad{stroke:var(--alarm);stroke-width:1.4;fill:none}
+.dgm .edge-acc{stroke:var(--accent);stroke-width:1.4;fill:none}
+.dgm .dash{stroke-dasharray:5 4}
+.dgm .hair{stroke:var(--rule);stroke-width:1;fill:none;stroke-dasharray:3 4}
+.dgm .mk{fill:var(--ink-3)}
+.dgm .mk-bad{fill:var(--alarm)}
+.dgm .mk-acc{fill:var(--accent)}
+
+/* ---------- binding table ---------- */
+.stages{display:grid;gap:1.1rem;margin:2.2rem 0}
+.stage{
+  background:var(--surface);
+  border:1px solid var(--rule-soft);
+  border-radius:6px;
+  overflow:hidden;
+}
+.stage.hot{border-color:var(--alarm-line)}
+.stage-hd{
+  display:flex;flex-wrap:wrap;align-items:baseline;gap:.7rem;
+  padding:.85rem 1.1rem;
+  border-bottom:1px solid var(--rule-soft);
+  background:var(--raised);
+}
+.stage.hot .stage-hd{background:var(--alarm-soft);border-bottom-color:var(--alarm-line)}
+.stage-n{
+  font-family:var(--f-mono);font-size:.68rem;font-weight:600;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-3);
+}
+.stage.hot .stage-n{color:var(--alarm)}
+.stage-t{font-family:var(--f-display);font-weight:600;font-size:.95rem}
+.stage-body{padding:.4rem 0 0}
+.incoming{
+  margin:.9rem 1.1rem 0;
+  background:var(--term-bg);border-radius:4px;padding:.7rem .85rem;
+  font-family:var(--f-mono);font-size:.72rem;color:var(--term-fg);
+  overflow-x:auto;white-space:nowrap;
+}
+.incoming .k{color:var(--term-dim)}
+.incoming .lie{color:#E3705C;font-weight:600}
+
+table{width:100%;border-collapse:collapse;font-family:var(--f-mono);font-size:.74rem;font-variant-numeric:tabular-nums}
+.tscroll{overflow-x:auto}
+th{
+  text-align:left;font-weight:500;color:var(--ink-3);
+  letter-spacing:.1em;text-transform:uppercase;font-size:.64rem;
+  padding:.7rem 1.1rem .5rem;white-space:nowrap;
+}
+td{padding:.5rem 1.1rem;border-top:1px solid var(--rule-soft);color:var(--ink-2);white-space:nowrap}
+tbody tr:first-child td{border-top:1px solid var(--rule)}
+td.k{color:var(--ink);font-weight:500}
+tr.flag td{background:var(--alarm-soft);color:var(--alarm)}
+tr.flag td.k{color:var(--alarm)}
+.empty td{color:var(--ink-3);font-style:normal;text-align:center;padding:1.4rem}
+
+.tag{
+  display:inline-block;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
+  padding:.15rem .45rem;border-radius:3px;font-weight:600;
+}
+.tag-ok{color:var(--trust);background:var(--trust-soft)}
+.tag-bad{color:var(--alarm);background:var(--alarm-soft);border:1px solid var(--alarm-line)}
+.tag-new{color:var(--accent);background:var(--accent-soft)}
+
+/* ---------- flow rules ---------- */
+.rules{display:grid;gap:.7rem;margin:2rem 0}
+.rule{
+  display:grid;
+  grid-template-columns:3.4rem minmax(0,1fr);
+  gap:0 1.1rem;
+  background:var(--surface);
+  border:1px solid var(--rule-soft);
+  border-left:3px solid var(--rule);
+  border-radius:0 5px 5px 0;
+  padding:.95rem 1.1rem;
+}
+.rule.r-bad{border-left-color:var(--alarm)}
+.rule.r-acc{border-left-color:var(--accent)}
+.prio{
+  font-family:var(--f-mono);font-size:1.15rem;font-weight:600;
+  color:var(--ink);line-height:1.2;font-variant-numeric:tabular-nums;
+}
+.rule.r-bad .prio{color:var(--alarm)}
+.rule.r-acc .prio{color:var(--accent)}
+.prio small{display:block;font-size:.6rem;letter-spacing:.1em;color:var(--ink-3);font-weight:500;text-transform:uppercase;margin-top:.2rem}
+.rule-body .match{
+  font-family:var(--f-mono);font-size:.76rem;color:var(--ink);
+  margin:0 0 .45rem;overflow-x:auto;
+}
+.rule-body .match .arrow{color:var(--ink-3)}
+.rule-body .why{font-size:.94rem;line-height:1.55;color:var(--ink-2);margin:0}
+
+/* ---------- steps ---------- */
+.steps{list-style:none;counter-reset:st;margin:2rem 0;padding:0;display:grid;gap:1.4rem}
+.steps li{counter-increment:st;display:grid;grid-template-columns:2rem minmax(0,1fr);gap:0 1rem;align-items:start}
+.steps li::before{
+  content:counter(st);
+  font-family:var(--f-mono);font-size:.78rem;font-weight:600;color:var(--accent);
+  background:var(--accent-soft);border-radius:3px;
+  width:1.75rem;height:1.75rem;display:grid;place-items:center;margin-top:.1rem;
+}
+.steps h3{margin:0 0 .35rem;font-size:1rem}
+.steps p{margin:0 0 .5em;font-size:.98rem;color:var(--ink-2)}
+
+.term{
+  background:var(--term-bg);color:var(--term-fg);
+  border-radius:5px;padding:.9rem 1.05rem;overflow-x:auto;
+  font-family:var(--f-mono);font-size:.76rem;line-height:1.85;
+  margin:.7rem 0 0;white-space:pre;
+}
+.term .p{color:var(--term-dim)}
+.term .c{color:var(--term-cmt)}
+
+/* ---------- limits ---------- */
+.limits{display:grid;gap:0;margin:2rem 0;border-top:1px solid var(--rule)}
+.limit{
+  display:grid;grid-template-columns:minmax(0,1fr);gap:.3rem;
+  padding:1.15rem 0;border-bottom:1px solid var(--rule-soft);
+}
+@media(min-width:44rem){
+  .limit{grid-template-columns:14rem minmax(0,1fr);gap:0 2rem;align-items:baseline}
+}
+.limit-t{font-family:var(--f-display);font-weight:600;font-size:.98rem;color:var(--ink)}
+.limit-t code{font-family:var(--f-mono);font-size:.82rem;font-weight:400;color:var(--alarm)}
+.limit p{margin:0;font-size:.97rem;color:var(--ink-2);line-height:1.6}
+.limit p code{font-family:var(--f-mono);font-size:.84rem;color:var(--ink);background:var(--surface);padding:.05rem .3rem;border-radius:3px}
+
+/* ---------- code map ---------- */
+.files{
+  border:1px solid var(--rule-soft);border-radius:6px;
+  background:var(--surface);overflow:hidden;margin:2rem 0;
+}
+.files table{font-size:.78rem}
+.files td{white-space:normal}
+.files td.fname{font-weight:600;color:var(--ink);white-space:nowrap}
+.files td.lines{color:var(--ink-3);white-space:nowrap;font-size:.72rem}
+.files td.what{font-family:var(--f-body);font-size:.95rem;line-height:1.5;min-width:16rem}
+
+.note{
+  display:grid;gap:.5rem;
+  border:1px solid var(--rule);border-radius:5px;
+  padding:1.05rem 1.2rem;margin:2rem 0;
+  background:var(--surface);
+}
+.note .eyebrow{margin:0}
+.note p{font-size:.95rem;color:var(--ink-2);margin:0}
+
+footer{
+  border-top:1px solid var(--rule);
+  padding-top:1.6rem;margin-top:1rem;
+  font-family:var(--f-mono);font-size:.73rem;color:var(--ink-3);
+  display:flex;flex-wrap:wrap;gap:.5rem 1.5rem;justify-content:space-between;
+}
+
+@media(min-width:52rem){
+  .shell{padding:0 2.5rem 6rem}
+  .stages{gap:1.3rem}
+}
+</style>
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<div class="shell">
+
+<header class="mast">
+  <p class="eyebrow">SDN security lab &middot; Ryu &middot; OpenFlow 1.3 &middot; Mininet</p>
+  <h1>The Lying Packet</h1>
+  <p class="standfirst">Every machine on a local network answers one question on the honour system &mdash; <em>&ldquo;which of you owns this address?&rdquo;</em> This project puts a program in the middle of the network that remembers the answers, and notices when one of them changes.</p>
+
+  <div class="capture" role="img" aria-label="A captured ARP reply at 21:04:17 in which host h1 falsely claims to own IP address 192.168.1.3.">
+    <span class="t">21:04:17.882</span>  <span class="k">ARP</span>  reply   <span class="lie">192.168.1.3</span>  is-at  <span class="lie">00:00:00:00:00:01</span>
+  </div>
+  <p class="capture-note"><span class="dot" aria-hidden="true"></span>h1&rsquo;s hardware address, claiming h3&rsquo;s IP. That single line is the whole attack.</p>
+
+  <a class="simlink" href="simulator.html">Run the attack yourself in the simulator <span class="arw" aria-hidden="true">&rarr;</span></a>
+  <a class="simlink" href="guide.html" style="margin-left:.5rem">New to networking? Read the plain-English guide <span class="arw" aria-hidden="true">&rarr;</span></a>
+
+  <div class="chips">
+    <span class="chip">Ryu controller</span>
+    <span class="chip">OpenFlow 1.3</span>
+    <span class="chip">Open vSwitch</span>
+    <span class="chip">Mininet</span>
+    <span class="chip">Python 3</span>
+    <span class="chip">~220 lines</span>
+  </div>
+</header>
+
+<nav class="toc col" aria-label="Contents">
+  <ol>
+    <li><a href="#problem">The problem</a></li>
+    <li><a href="#sdn">Why SDN makes it catchable</a></li>
+    <li><a href="#idea">The idea</a></li>
+    <li><a href="#architecture">Architecture</a></li>
+    <li><a href="#pipeline">The decision pipeline</a></li>
+    <li><a href="#rules">What lives in the switch</a></li>
+    <li><a href="#run">Running the lab</a></li>
+    <li><a href="#limits">What it doesn&rsquo;t catch</a></li>
+    <li><a href="#files">The code</a></li>
+  </ol>
+</nav>
+
+<main id="main">
+
+<!-- ============ 1. THE PROBLEM ============ -->
+<section id="problem">
+  <div class="col">
+    <p class="eyebrow">The problem</p>
+    <h2>A local network runs entirely on trust</h2>
+    <p class="lede">Two machines on the same network don&rsquo;t reach each other by IP address. They reach each other by hardware address &mdash; the MAC burned into the network card. Something has to translate between the two, and that something is ARP.</p>
+    <p>ARP works by shouting. A host broadcasts <em>&ldquo;who has 192.168.1.4?&rdquo;</em> to everyone on the wire and waits. Whoever replies is believed. There is no signature on the reply, no authority to check it against, and no rule that says a later answer can&rsquo;t overwrite an earlier one. First answer wins &mdash; until a second answer arrives, and then that one wins.</p>
+  </div>
+
+  <div class="col">
+    <div class="plain">
+      <p class="eyebrow">In plain terms</p>
+      <p>Picture a mailroom where anyone can walk in and announce &ldquo;I&rsquo;m the accounting department now &mdash; send their post to me.&rdquo; Nobody asks for ID. Everyone crosses out the old entry and writes down the new one. That is genuinely how ARP works, and it has worked that way since 1982.</p>
+    </div>
+  </div>
+
+  <div class="col">
+    <h3>The attack, concretely</h3>
+    <p>In this lab, host <strong>h1</strong> runs <span style="font-family:var(--f-mono);font-size:.86rem">ettercap</span>. It sends h3 a forged reply claiming to be h4, and sends h4 a forged reply claiming to be h3. Both victims update their notes. From that moment every packet between them lands on h1 first, gets read, and is passed along.</p>
+    <p>Nothing appears to break. The ping still returns. The transfer still completes. That silence is the point &mdash; it is why the technique is called a <strong>man in the middle</strong>.</p>
+  </div>
+
+  <figure>
+    <div class="figwrap">
+      <svg class="dgm" viewBox="0 0 760 356" role="img" aria-label="Two rows. In the normal row, traffic runs h3 to switch s1 to h4. In the poisoned row, two forged ARP replies from h1 cause the same traffic to detour up through h1 and back before reaching h4.">
+        <defs>
+          <marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" class="mk"/></marker>
+          <marker id="mab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" class="mk-bad"/></marker>
+        </defs>
+
+        <!-- row 1 : normal -->
+        <text class="eb" x="70" y="22">NORMAL</text>
+        <rect class="box" x="70"  y="40" width="104" height="48" rx="4"/>
+        <text class="name" x="122" y="61" text-anchor="middle">h3</text>
+        <text class="sub"  x="122" y="77" text-anchor="middle">192.168.1.3</text>
+        <rect class="box" x="328" y="40" width="104" height="48" rx="4"/>
+        <text class="name" x="380" y="61" text-anchor="middle">s1</text>
+        <text class="sub"  x="380" y="77" text-anchor="middle">switch</text>
+        <rect class="box" x="586" y="40" width="104" height="48" rx="4"/>
+        <text class="name" x="638" y="61" text-anchor="middle">h4</text>
+        <text class="sub"  x="638" y="77" text-anchor="middle">192.168.1.4</text>
+        <path class="edge" d="M182 64 L318 64" marker-end="url(#ma)"/>
+        <path class="edge" d="M440 64 L576 64" marker-end="url(#ma)"/>
+        <text class="sub" x="250" y="56" text-anchor="middle">ping</text>
+        <text class="sub" x="508" y="56" text-anchor="middle">ping</text>
+
+        <path class="hair" d="M70 118 L690 118"/>
+
+        <!-- row 2 : poisoned -->
+        <text class="eb-bad" x="70" y="150">POISONED</text>
+        <text class="sub-bad" x="215" y="178" text-anchor="middle">forged: &ldquo;I am h4&rdquo;</text>
+        <text class="sub-bad" x="545" y="178" text-anchor="middle">forged: &ldquo;I am h3&rdquo;</text>
+
+        <rect class="badbox" x="328" y="192" width="104" height="48" rx="4"/>
+        <text class="name-bad" x="380" y="213" text-anchor="middle">h1</text>
+        <text class="sub-bad"  x="380" y="229" text-anchor="middle">attacker</text>
+
+        <path class="edge-bad dash" d="M322 216 C 250 216, 165 232, 132 284" marker-end="url(#mab)"/>
+        <path class="edge-bad dash" d="M438 216 C 510 216, 595 232, 628 284" marker-end="url(#mab)"/>
+
+        <rect class="box" x="70"  y="290" width="104" height="48" rx="4"/>
+        <text class="name" x="122" y="311" text-anchor="middle">h3</text>
+        <text class="sub"  x="122" y="327" text-anchor="middle">192.168.1.3</text>
+        <rect class="box" x="328" y="290" width="104" height="48" rx="4"/>
+        <text class="name" x="380" y="311" text-anchor="middle">s1</text>
+        <text class="sub"  x="380" y="327" text-anchor="middle">switch</text>
+        <rect class="box" x="586" y="290" width="104" height="48" rx="4"/>
+        <text class="name" x="638" y="311" text-anchor="middle">h4</text>
+        <text class="sub"  x="638" y="327" text-anchor="middle">192.168.1.4</text>
+
+        <path class="edge" d="M182 314 L318 314" marker-end="url(#ma)"/>
+        <path class="edge" d="M440 314 L576 314" marker-end="url(#ma)"/>
+        <text class="sub" x="250" y="306" text-anchor="middle">ping</text>
+        <text class="sub" x="508" y="306" text-anchor="middle">ping</text>
+
+        <path class="edge-bad" d="M358 288 L358 248" marker-end="url(#mab)"/>
+        <path class="edge-bad" d="M402 246 L402 286" marker-end="url(#mab)"/>
+        <text class="sub-bad" x="444" y="272">relayed</text>
+      </svg>
+    </div>
+    <figcaption>The difference the attack makes: one extra hop, invisible to both ends. The dashed arrows are the two forged ARP replies that create it &mdash; each one is a single unsolicited packet.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 2. WHY SDN ============ -->
+<section id="sdn">
+  <div class="col">
+    <p class="eyebrow">Why SDN makes it catchable</p>
+    <h2>Separating the thinking from the forwarding</h2>
+    <p class="lede">An ordinary switch decides where packets go using logic baked into its firmware. You can configure that switch. You cannot teach it something new.</p>
+    <p>Software-defined networking splits the box in two. The switch keeps only a <strong>flow table</strong> &mdash; a list of rules that say <em>match this, do that</em>. All the actual decisions move into a separate program, the <strong>controller</strong>, which runs on an ordinary computer in a language you can edit.</p>
+    <p>When a packet arrives that no rule covers, the switch doesn&rsquo;t guess. It wraps the packet up and sends it to the controller as a <span style="font-family:var(--f-mono);font-size:.86rem">packet_in</span> message &mdash; it asks. The controller replies with what to do, and usually installs a rule so it won&rsquo;t be asked again.</p>
+    <p><strong>That question is the opening.</strong> Write one rule saying <em>every ARP packet must be asked about</em>, and you get to inspect every ARP message on the network before it is delivered. Which is exactly what this project does.</p>
+  </div>
+
+  <figure>
+    <div class="figwrap">
+      <svg class="dgm" viewBox="0 0 760 300" role="img" aria-label="Left: an ordinary switch is one box whose forwarding logic is fixed in firmware. Right: SDN splits it into an editable Ryu controller and a rule-matching switch, linked by an OpenFlow channel carrying packet_in upward and flow_mod downward.">
+        <defs>
+          <marker id="mb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" class="mk"/></marker>
+          <marker id="mbc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" class="mk-acc"/></marker>
+        </defs>
+
+        <text class="eb" x="30" y="26">ORDINARY SWITCH</text>
+        <rect class="box" x="88" y="64" width="200" height="110" rx="4"/>
+        <text class="name" x="188" y="98" text-anchor="middle">Switch</text>
+        <text class="sub" x="188" y="122" text-anchor="middle">decisions inside,</text>
+        <text class="sub" x="188" y="138" text-anchor="middle">in firmware</text>
+        <text class="sub" x="188" y="154" text-anchor="middle">you can&rsquo;t edit</text>
+        <path class="edge" d="M30 119 L80 119" marker-end="url(#mb)"/>
+        <path class="edge" d="M296 119 L344 119" marker-end="url(#mb)"/>
+        <text class="data" x="30" y="212">You configure it.</text>
+        <text class="data" x="30" y="230">You cannot teach it.</text>
+
+        <path class="hair" d="M380 18 L380 282"/>
+
+        <text class="eb-acc" x="420" y="26">SDN &mdash; THIS PROJECT</text>
+        <rect class="accbox" x="452" y="54" width="232" height="56" rx="4"/>
+        <text class="name-acc" x="568" y="80" text-anchor="middle">Ryu controller</text>
+        <text class="sub" x="568" y="97" text-anchor="middle">app.py &mdash; Python you write</text>
+
+        <rect class="box" x="452" y="176" width="232" height="56" rx="4"/>
+        <text class="name" x="568" y="202" text-anchor="middle">Open vSwitch s1</text>
+        <text class="sub" x="568" y="219" text-anchor="middle">just matches rules</text>
+
+        <path class="edge-acc" d="M512 174 L512 118" marker-end="url(#mbc)"/>
+        <path class="edge-acc" d="M624 116 L624 172" marker-end="url(#mbc)"/>
+        <text class="sub-acc" x="504" y="142" text-anchor="end">packet_in</text>
+        <text class="sub-acc" x="632" y="142">flow_mod</text>
+        <text class="sub" x="568" y="160" text-anchor="middle">OpenFlow 1.3</text>
+
+        <path class="edge" d="M396 204 L444 204" marker-end="url(#mb)"/>
+        <path class="edge" d="M692 204 L740 204" marker-end="url(#mb)"/>
+
+        <text class="data" x="420" y="264">The switch asks. The program answers.</text>
+        <text class="data" x="420" y="282">The asking is where the check lives.</text>
+      </svg>
+    </div>
+    <figcaption>The one structural change that makes the whole project possible: forwarding stays in the switch, judgement moves into a file you can open.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 3. THE IDEA ============ -->
+<section id="idea">
+  <div class="col">
+    <p class="eyebrow">The idea</p>
+    <h2>You can&rsquo;t verify a packet. You can verify a history.</h2>
+    <p class="lede">The reasoning behind this project runs in four steps, and the third is where it turns.</p>
+    <p><strong>One.</strong> An ARP message carries no proof of anything. There is no field to check, no key to verify against. Examining a single packet in isolation is hopeless &mdash; a forged reply is byte-for-byte as valid as a real one.</p>
+    <p><strong>Two.</strong> But nothing says you have to judge a packet in isolation. You can judge it against everything you have already seen.</p>
+    <p><strong>Three.</strong> A real machine&rsquo;s identity is a triple that does not change during a session: <em>this MAC address, holding this IP, arriving on this physical switch port.</em> Records that stay together.</p>
+    <p><strong>Four.</strong> So record the triple the first time you see it, and hold every sender to it afterwards. A forged ARP reply has to lie about at least one leg &mdash; that is what forging <em>means</em> here &mdash; so it cannot match.</p>
+  </div>
+
+  <div class="col">
+    <div class="plain">
+      <p class="eyebrow">In plain terms</p>
+      <p>It is not cryptography and it isn&rsquo;t clever. It&rsquo;s the doorman who has worked the building for years: he can&rsquo;t inspect your ID, but he knows that the person who has walked in through the west door every morning claiming apartment 1 has just walked in through the same door claiming apartment 3. That&rsquo;s enough.</p>
+    </div>
+  </div>
+
+  <div class="col">
+    <h3>The table, at three moments</h3>
+    <p>All of that lives in one Python dictionary, <span style="font-family:var(--f-mono);font-size:.86rem">mac_to_ip</span>. Here it is empty, learned, and violated.</p>
+  </div>
+
+  <div class="stages">
+    <div class="stage">
+      <div class="stage-hd"><span class="stage-n">Moment 1</span><span class="stage-t">The controller starts knowing nothing</span></div>
+      <div class="tscroll">
+        <table>
+          <caption class="sr-only" style="position:absolute;left:-9999px">Binding table before any traffic</caption>
+          <thead><tr><th scope="col">MAC address</th><th scope="col">Claims IP</th><th scope="col">On port</th><th scope="col">Status</th></tr></thead>
+          <tbody><tr class="empty"><td colspan="4">no bindings recorded &mdash; every ARP packet will be a first sighting</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="stage-hd"><span class="stage-n">Moment 2</span><span class="stage-t">After the first round of pings</span></div>
+      <div class="tscroll">
+        <table>
+          <caption class="sr-only" style="position:absolute;left:-9999px">Binding table after four hosts have been learned</caption>
+          <thead><tr><th scope="col">MAC address</th><th scope="col">Claims IP</th><th scope="col">On port</th><th scope="col">Status</th></tr></thead>
+          <tbody>
+            <tr><td class="k">00:00:00:00:00:01</td><td>192.168.1.1</td><td>1</td><td><span class="tag tag-new">learned</span></td></tr>
+            <tr><td class="k">00:00:00:00:00:02</td><td>192.168.1.2</td><td>2</td><td><span class="tag tag-new">learned</span></td></tr>
+            <tr><td class="k">00:00:00:00:00:03</td><td>192.168.1.3</td><td>3</td><td><span class="tag tag-new">learned</span></td></tr>
+            <tr><td class="k">00:00:00:00:00:04</td><td>192.168.1.4</td><td>4</td><td><span class="tag tag-new">learned</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="stage hot">
+      <div class="stage-hd"><span class="stage-n">Moment 3</span><span class="stage-t">The forged reply arrives</span></div>
+      <div class="incoming" role="img" aria-label="Incoming ARP reply: source MAC 00:00:00:00:00:01, source IP 192.168.1.3, ingress port 1.">
+        <span class="k">incoming</span>  ARP reply   src_mac=<span class="lie">00:00:00:00:00:01</span>  src_ip=<span class="lie">192.168.1.3</span>  in_port=1
+      </div>
+      <div class="stage-body tscroll">
+        <table>
+          <caption class="sr-only" style="position:absolute;left:-9999px">Binding table with the attacker's row flagged as a mismatch</caption>
+          <thead><tr><th scope="col">MAC address</th><th scope="col">Claims IP</th><th scope="col">On port</th><th scope="col">Status</th></tr></thead>
+          <tbody>
+            <tr class="flag"><td class="k">00:00:00:00:00:01</td><td>192.168.1.1 &nbsp;&ne;&nbsp; 192.168.1.3</td><td>1</td><td><span class="tag tag-bad">IP mismatch</span></td></tr>
+            <tr><td class="k">00:00:00:00:00:02</td><td>192.168.1.2</td><td>2</td><td><span class="tag tag-ok">consistent</span></td></tr>
+            <tr><td class="k">00:00:00:00:00:03</td><td>192.168.1.3</td><td>3</td><td><span class="tag tag-ok">consistent</span></td></tr>
+            <tr><td class="k">00:00:00:00:00:04</td><td>192.168.1.4</td><td>4</td><td><span class="tag tag-ok">consistent</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <p>The MAC is on record. The port still matches. The IP does not. That single disagreement is the entire detection &mdash; five lines of Python, and it fires on the very first forged packet, before either victim has updated anything.</p>
+  </div>
+</section>
+
+<!-- ============ 4. ARCHITECTURE ============ -->
+<section id="architecture">
+  <div class="col">
+    <p class="eyebrow">Architecture</p>
+    <h2>Four hosts, one switch, one program</h2>
+    <p class="lede">The whole system runs on a single Linux machine. Mininet builds a real network out of kernel namespaces and virtual interfaces; the controller talks to it over a genuine OpenFlow socket. Nothing here is simulated at the protocol level.</p>
+    <p>The controller keeps two dictionaries, both keyed by switch ID so the design would survive more than one switch:</p>
+    <p><span style="font-family:var(--f-mono);font-size:.86rem">mac_to_port</span> &mdash; the ordinary learning-switch table. Answers <em>where do I send traffic for this MAC?</em></p>
+    <p><span style="font-family:var(--f-mono);font-size:.86rem">mac_to_ip</span> &mdash; the security table. Answers <em>what is this MAC allowed to claim?</em> This one is the project.</p>
+  </div>
+
+  <figure>
+    <div class="figwrap">
+      <svg class="dgm" viewBox="0 0 760 470" role="img" aria-label="The Ryu controller holds two state tables and connects over OpenFlow to Open vSwitch s1, whose flow table holds four rules by priority. Four hosts h1 to h4 attach to switch ports one through four; h1 is the attacker.">
+        <defs>
+          <marker id="mc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" class="mk"/></marker>
+          <marker id="mcc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" class="mk-acc"/></marker>
+        </defs>
+
+        <rect class="accbox" x="170" y="20" width="420" height="86" rx="5"/>
+        <text class="name-acc" x="380" y="45" text-anchor="middle">Ryu controller &middot; app.py</text>
+        <rect class="panel" x="190" y="58" width="180" height="32" rx="3"/>
+        <text class="sub" x="280" y="78" text-anchor="middle">mac_to_port {mac&rarr;port}</text>
+        <rect class="panel" x="390" y="58" width="180" height="32" rx="3"/>
+        <text class="sub" x="480" y="78" text-anchor="middle">mac_to_ip {mac&rarr;ip,port}</text>
+
+        <path class="edge-acc" d="M300 188 L300 114" marker-end="url(#mcc)"/>
+        <path class="edge-acc" d="M460 112 L460 186" marker-end="url(#mcc)"/>
+        <text class="sub-acc" x="292" y="140" text-anchor="end">packet_in</text>
+        <text class="sub" x="292" y="156" text-anchor="end">every ARP</text>
+        <text class="sub-acc" x="468" y="140">flow_mod</text>
+        <text class="sub" x="468" y="156">add / drop rules</text>
+        <text class="sub" x="380" y="177" text-anchor="middle">OpenFlow 1.3</text>
+
+        <rect class="box" x="110" y="190" width="540" height="142" rx="5"/>
+        <text class="name" x="130" y="215">Open vSwitch &nbsp;s1</text>
+        <text class="eb" x="630" y="215" text-anchor="end">FLOW TABLE</text>
+        <text class="sub" x="132" y="238">PRIO</text>
+        <text class="sub" x="196" y="238">MATCH</text>
+        <text class="sub" x="436" y="238">ACTION</text>
+        <path class="hair" d="M130 245 L630 245"/>
+
+        <text class="sub-bad" x="132" y="264">101</text>
+        <text class="sub-bad" x="196" y="264">in_port = attacker port</text>
+        <text class="sub-bad" x="436" y="264">drop</text>
+
+        <text class="sub-acc" x="132" y="284">100</text>
+        <text class="sub-acc" x="196" y="284">eth_type = ARP</text>
+        <text class="sub-acc" x="436" y="284">&rarr; controller</text>
+
+        <text class="data" x="132" y="304">1</text>
+        <text class="data" x="196" y="304">in_port, eth_src, eth_dst</text>
+        <text class="data" x="436" y="304">&rarr; out_port</text>
+
+        <text class="sub" x="132" y="324">0</text>
+        <text class="sub" x="196" y="324">table-miss</text>
+        <text class="sub" x="436" y="324">&rarr; controller</text>
+
+        <path class="edge" d="M165 332 L165 378"/>
+        <path class="edge" d="M308 332 L308 378"/>
+        <path class="edge" d="M451 332 L451 378"/>
+        <path class="edge" d="M594 332 L594 378"/>
+        <text class="sub" x="172" y="360">port 1</text>
+        <text class="sub" x="315" y="360">port 2</text>
+        <text class="sub" x="458" y="360">port 3</text>
+        <text class="sub" x="601" y="360">port 4</text>
+
+        <rect class="badbox" x="110" y="380" width="110" height="52" rx="4"/>
+        <text class="name-bad" x="165" y="402" text-anchor="middle">h1</text>
+        <text class="sub-bad" x="165" y="419" text-anchor="middle">192.168.1.1</text>
+        <text class="sub-bad" x="165" y="452" text-anchor="middle">runs ettercap</text>
+
+        <rect class="box" x="253" y="380" width="110" height="52" rx="4"/>
+        <text class="name" x="308" y="402" text-anchor="middle">h2</text>
+        <text class="sub" x="308" y="419" text-anchor="middle">192.168.1.2</text>
+
+        <rect class="box" x="396" y="380" width="110" height="52" rx="4"/>
+        <text class="name" x="451" y="402" text-anchor="middle">h3</text>
+        <text class="sub" x="451" y="419" text-anchor="middle">192.168.1.3</text>
+
+        <rect class="box" x="539" y="380" width="110" height="52" rx="4"/>
+        <text class="name" x="594" y="402" text-anchor="middle">h4</text>
+        <text class="sub" x="594" y="419" text-anchor="middle">192.168.1.4</text>
+      </svg>
+    </div>
+    <figcaption>State lives in the controller; enforcement lives in the switch. The priority&nbsp;100 rule is what guarantees the controller sees every ARP packet &mdash; without it, ARP would be forwarded in the fast path and never reach the check.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 5. PIPELINE ============ -->
+<section id="pipeline">
+  <div class="col">
+    <p class="eyebrow">The decision pipeline</p>
+    <h2>What happens to one packet</h2>
+    <p class="lede">Every packet the switch cannot handle alone lands in a single Python function and walks through the same sequence. This one <em>is</em> an ordered process, so the order matters.</p>
+  </div>
+
+  <figure>
+    <div class="figwrap">
+      <svg class="dgm" viewBox="0 0 760 500" role="img" aria-label="Flowchart. A packet_in arrives. If it is LLDP it is ignored. Otherwise the source MAC is learned. If it is not ARP it goes straight to forwarding. If it is ARP, the binding is checked: matching bindings forward normally, a mismatch blocks the port with a priority 101 drop rule.">
+        <defs>
+          <marker id="md" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" class="mk"/></marker>
+          <marker id="mdb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" class="mk-bad"/></marker>
+        </defs>
+
+        <rect class="accbox" x="175" y="16" width="170" height="40" rx="4"/>
+        <text class="name-acc" x="260" y="41" text-anchor="middle">packet_in arrives</text>
+        <path class="edge" d="M260 56 L260 78" marker-end="url(#md)"/>
+
+        <polygon class="box" points="165,112 260,82 355,112 260,142"/>
+        <text class="name" x="260" y="117" text-anchor="middle">LLDP?</text>
+        <path class="edge" d="M355 112 L499 112" marker-end="url(#md)"/>
+        <text class="sub" x="427" y="104" text-anchor="middle">yes</text>
+        <rect class="panel" x="505" y="92" width="170" height="40" rx="4"/>
+        <text class="data" x="590" y="116" text-anchor="middle">ignored</text>
+        <path class="edge" d="M260 142 L260 164" marker-end="url(#md)"/>
+        <text class="sub" x="268" y="158">no</text>
+
+        <rect class="box" x="175" y="166" width="170" height="42" rx="4"/>
+        <text class="data" x="260" y="191" text-anchor="middle">learn src MAC &rarr; port</text>
+        <path class="edge" d="M260 208 L260 234" marker-end="url(#md)"/>
+
+        <polygon class="box" points="165,268 260,238 355,268 260,298"/>
+        <text class="name" x="260" y="273" text-anchor="middle">ARP?</text>
+        <path class="edge" d="M165 268 L100 268 L100 452 L169 452" marker-end="url(#md)"/>
+        <text class="sub" x="132" y="260" text-anchor="middle">no</text>
+        <path class="edge" d="M260 298 L260 326" marker-end="url(#md)"/>
+        <text class="sub" x="268" y="316">yes</text>
+
+        <polygon class="accbox" points="145,368 260,330 375,368 260,406"/>
+        <text class="name" x="260" y="364" text-anchor="middle">binding</text>
+        <text class="name" x="260" y="380" text-anchor="middle">matches?</text>
+
+        <path class="edge-bad" d="M375 368 L499 368" marker-end="url(#mdb)"/>
+        <text class="sub-bad" x="437" y="360" text-anchor="middle">no</text>
+        <rect class="badbox" x="505" y="344" width="180" height="50" rx="4"/>
+        <text class="name-bad" x="595" y="365" text-anchor="middle">block the port</text>
+        <text class="sub-bad" x="595" y="382" text-anchor="middle">priority 101 &middot; drop</text>
+
+        <path class="edge" d="M260 406 L260 428" marker-end="url(#md)"/>
+        <text class="sub" x="268" y="422">yes</text>
+        <rect class="box" x="175" y="430" width="170" height="44" rx="4"/>
+        <text class="name" x="260" y="450" text-anchor="middle">forward</text>
+        <text class="sub" x="260" y="465" text-anchor="middle">learning-switch path</text>
+      </svg>
+    </div>
+    <figcaption>Note the order: the MAC is learned <em>before</em> the ARP check runs, and a blocked packet returns immediately &mdash; it is never forwarded.</figcaption>
+  </figure>
+
+  <div class="col">
+    <ol class="steps">
+      <li>
+        <div>
+          <h3>Discard link-layer discovery traffic</h3>
+          <p>LLDP frames are how controllers map topology. They are not user traffic and are dropped before anything else runs.</p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <h3>Learn the source</h3>
+          <p>Record which port this MAC arrived on, so future traffic to it can be sent directly instead of flooded. Standard learning-switch behaviour, unchanged from the Ryu example this project started from.</p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <h3>Is it ARP?</h3>
+          <p>Anything else skips the check entirely and goes to normal forwarding. Only ARP carries an address claim, so only ARP needs validating.</p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <h3>Check the binding &mdash; or create it</h3>
+          <p>If this MAC has never been seen, store its IP and port and let the packet through: first sighting is always trusted. If it <em>has</em> been seen, compare both the IP and the ingress port against the stored pair.</p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <h3>On a mismatch, block the port</h3>
+          <p>Log the attacker&rsquo;s MAC and the IP it tried to claim, push a drop rule for that switch port, and return without forwarding the packet.</p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <h3>Otherwise, forward &mdash; and install a shortcut</h3>
+          <p>For IPv4 traffic with a known destination, the controller also installs a flow rule so subsequent packets in that conversation never come back to it. ARP deliberately gets no such shortcut &mdash; that is what keeps the check running.</p>
+        </div>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<!-- ============ 6. FLOW RULES ============ -->
+<section id="rules">
+  <div class="col">
+    <p class="eyebrow">What lives in the switch</p>
+    <h2>Four rules, read top down</h2>
+    <p class="lede">An OpenFlow switch checks its table in priority order and stops at the first match. These four rules, and the order they sit in, are the entire enforcement side of the project.</p>
+  </div>
+
+  <div class="rules">
+    <div class="rule r-bad">
+      <div class="prio">101<small>drop</small></div>
+      <div class="rule-body">
+        <p class="match">in_port = &lt;attacker&gt; <span class="arrow">&rarr;</span> <em>(no actions)</em></p>
+        <p class="why">Installed only when an attack is detected. OpenFlow has no explicit &ldquo;drop&rdquo; instruction &mdash; you match the traffic and give it an empty action list, and the packet simply goes nowhere. Sitting above the ARP rule, it silences that port completely rather than just for ARP.</p>
+      </div>
+    </div>
+
+    <div class="rule r-acc">
+      <div class="prio">100<small>watch</small></div>
+      <div class="rule-body">
+        <p class="match">eth_type = 0x0806 (ARP) <span class="arrow">&rarr;</span> send to controller</p>
+        <p class="why">Installed the moment the switch connects. This is the load-bearing rule: it forces every single ARP packet up to the controller instead of letting the switch forward it at line rate. Without it the detection would see nothing after the first few packets.</p>
+      </div>
+    </div>
+
+    <div class="rule">
+      <div class="prio">1<small>fast path</small></div>
+      <div class="rule-body">
+        <p class="match">in_port + eth_src + eth_dst <span class="arrow">&rarr;</span> output to port</p>
+        <p class="why">Added on demand, per conversation, with a 10-second idle timeout. This is what keeps the controller from becoming a bottleneck: ordinary traffic gets a rule after its first packet and stops asking. Short-lived on purpose, so the network re-learns rather than drifting stale.</p>
+      </div>
+    </div>
+
+    <div class="rule">
+      <div class="prio">0<small>fallback</small></div>
+      <div class="rule-body">
+        <p class="match">match anything <span class="arrow">&rarr;</span> send to controller</p>
+        <p class="why">The table-miss rule. Anything no other rule covers becomes a question for the controller. Every OpenFlow application installs one; without it, unmatched packets are dropped silently and the controller never learns anything.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <h3>What the block actually does</h3>
+    <p>The drop rule carries <span style="font-family:var(--f-mono);font-size:.86rem">idle_timeout=300</span>, which means the switch deletes it after five minutes with no matching traffic. The block is therefore self-healing: an attacker who goes quiet gets their port back automatically. Whether that is a feature or a gap depends on what you want from it &mdash; see <a href="#limits">what it doesn&rsquo;t catch</a>.</p>
+  </div>
+</section>
+
+<!-- ============ 7. RUN ============ -->
+<section id="run">
+  <div class="col">
+    <p class="eyebrow">Running the lab</p>
+    <h2>Three terminals</h2>
+    <p class="lede">Everything runs on one Linux host &mdash; Mininet needs kernel namespaces, so macOS and Windows need a VM. The two feature flags at the top of <span style="font-family:var(--f-mono);font-size:.86rem">app.py</span> let you watch the attack succeed first, then switch on the defence.</p>
+
+    <ol class="steps">
+      <li>
+        <div>
+          <h3>Install the attacker&rsquo;s tool</h3>
+          <div class="term"><span class="p">$</span> sudo apt install ettercap-text-only</div>
+        </div>
+      </li>
+      <li>
+        <div>
+          <h3>Start the controller</h3>
+          <p>Terminal one. It stays in the foreground and logs every ARP packet it sees.</p>
+          <div class="term"><span class="p">$</span> ryu-manager app.py</div>
+        </div>
+      </li>
+      <li>
+        <div>
+          <h3>Build the network</h3>
+          <p>Terminal two. This creates s1 and the four hosts, connects to the controller on localhost, and drops you at the Mininet prompt.</p>
+          <div class="term"><span class="p">$</span> sudo python3 topology.py</div>
+        </div>
+      </li>
+      <li>
+        <div>
+          <h3>Generate honest traffic</h3>
+          <p>At the Mininet prompt, keep h3 talking to h4 so there is something worth intercepting.</p>
+          <div class="term"><span class="p">mininet&gt;</span> h3 ping 192.168.1.4</div>
+        </div>
+      </li>
+      <li>
+        <div>
+          <h3>Attack from h1</h3>
+          <p>Terminal three, inside h1. This is the line that forges both replies and starts relaying.</p>
+          <div class="term"><span class="p">mininet&gt;</span> xterm h1
+<span class="p">h1#</span> ettercap -T -i h1-eth1 -w test1.pcap -M ARP /192.168.1.3// /192.168.1.4//</div>
+        </div>
+      </li>
+      <li>
+        <div>
+          <h3>Watch the three modes</h3>
+          <p>Edit the two flags at the top of <span style="font-family:var(--f-mono);font-size:.86rem">app.py</span> and re-run to see each stage.</p>
+          <div class="term"><span class="c"># attack succeeds silently</span>
+ARP_POSION_DETECTION = 0
+ARP_POSION_MITIGATION = 0
+
+<span class="c"># attack is logged, but still works</span>
+ARP_POSION_DETECTION = 1
+ARP_POSION_MITIGATION = 0
+
+<span class="c"># attack is logged and the port goes dark</span>
+ARP_POSION_DETECTION = 1
+ARP_POSION_MITIGATION = 1</div>
+        </div>
+      </li>
+    </ol>
+
+    <p>With mitigation on, the controller prints the offending MAC and the address it tried to claim, and h1&rsquo;s port stops passing traffic. The capture written to <span style="font-family:var(--f-mono);font-size:.86rem">test.pcap</span> opens in Wireshark, where the duplicate-address warning makes the forged replies easy to spot.</p>
+  </div>
+</section>
+
+<!-- ============ 8. LIMITS ============ -->
+<section id="limits">
+  <div class="col">
+    <p class="eyebrow">What it doesn&rsquo;t catch</p>
+    <h2>The honest edges</h2>
+    <p class="lede">The design is deliberately small, and small designs have visible edges. These are worth knowing before anyone treats it as a defence rather than a demonstration.</p>
+  </div>
+
+  <div class="col">
+    <div class="limits">
+      <div class="limit">
+        <div class="limit-t">MAC spoofing walks past it</div>
+        <p>The table is keyed by MAC address. An attacker who forges the source MAC as well as the IP simply creates a fresh, unseen entry &mdash; and first sighting is always trusted. Catching that needs a second key, such as a static port-to-address binding configured up front.</p>
+      </div>
+      <div class="limit">
+        <div class="limit-t">Whoever speaks first, wins</div>
+        <p>Bindings are created from whatever the controller happens to see first. An attacker present at boot poisons the table itself, and the legitimate host is then the one flagged and blocked. The check is only as trustworthy as the network&rsquo;s first thirty seconds.</p>
+      </div>
+      <div class="limit">
+        <div class="limit-t">The block is blunt</div>
+        <p>Mitigation kills the entire switch port, not just the offending traffic. On this four-host lab that is exactly one attacker. On a port with a downstream switch behind it, it is everyone.</p>
+      </div>
+      <div class="limit">
+        <div class="limit-t">And it expires quietly</div>
+        <p>The drop rule&rsquo;s five-minute idle timeout removes the block with no notification and no record. An attacker who pauses is readmitted.</p>
+      </div>
+      <div class="limit">
+        <div class="limit-t">The MAC is learned regardless</div>
+        <p>The forwarding table is updated before the ARP check runs, so a rejected packet still leaves its source MAC in <code>mac_to_port</code>. Harmless here, but it means the two tables can disagree.</p>
+      </div>
+      <div class="limit">
+        <div class="limit-t"><code>if buffer_id:</code></div>
+        <p>A real bug. OpenFlow buffer ID <code>0</code> is valid, and <code>0</code> is falsy in Python &mdash; so that one flow gets installed on the wrong branch. It should read <code>if buffer_id is not None:</code>. Rare enough to be invisible in a lab, which is exactly why it survives.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 9. FILES ============ -->
+<section id="files">
+  <div class="col">
+    <p class="eyebrow">The code</p>
+    <h2>Where everything is</h2>
+    <p class="lede">Two Python files carry the whole project. Line numbers refer to the repository as it stands.</p>
+  </div>
+
+  <div class="files">
+    <div class="tscroll">
+      <table>
+        <caption class="sr-only" style="position:absolute;left:-9999px">Repository files and what each contains</caption>
+        <thead><tr><th scope="col">File</th><th scope="col">Lines</th><th scope="col">What it does</th></tr></thead>
+        <tbody>
+          <tr><td class="fname">app.py</td><td class="lines">1&ndash;181</td><td class="what">The Ryu controller. A learning switch with the ARP binding check layered on top.</td></tr>
+          <tr><td class="fname">&nbsp;&nbsp;&#8627; switch_features_handler</td><td class="lines">27&ndash;41</td><td class="what">Installs the table-miss rule and the priority&nbsp;100 &ldquo;all ARP to me&rdquo; rule the moment a switch connects.</td></tr>
+          <tr><td class="fname">&nbsp;&nbsp;&#8627; add_flow</td><td class="lines">44&ndash;57</td><td class="what">Builds and sends a flow_mod. The one place rules are pushed to the switch.</td></tr>
+          <tr><td class="fname">&nbsp;&nbsp;&#8627; arp_process</td><td class="lines">60&ndash;89</td><td class="what">The detection. Records or validates the MAC / IP / port triple, returns false on a mismatch.</td></tr>
+          <tr><td class="fname">&nbsp;&nbsp;&#8627; block_port</td><td class="lines">93&ndash;98</td><td class="what">The mitigation. Priority&nbsp;101, match the ingress port, empty action list, five-minute idle timeout.</td></tr>
+          <tr><td class="fname">&nbsp;&nbsp;&#8627; _packet_in_handler</td><td class="lines">101&ndash;180</td><td class="what">The pipeline in the flowchart above: filter, learn, validate, forward or block.</td></tr>
+          <tr><td class="fname">topology.py</td><td class="lines">1&ndash;41</td><td class="what">Mininet lab. One switch, four hosts on 192.168.1.0/24 with fixed MACs, remote controller on localhost, tcpdump running on h1.</td></tr>
+          <tr><td class="fname">readme.txt</td><td class="lines">&mdash;</td><td class="what">The original run instructions for all three modes.</td></tr>
+          <tr><td class="fname">logic.txt</td><td class="lines">&mdash;</td><td class="what">The detection algorithm in prose, written before the code.</td></tr>
+          <tr><td class="fname">test.pcap</td><td class="lines">&mdash;</td><td class="what">A captured run, openable in Wireshark.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="note">
+      <p class="eyebrow">About the repository name</p>
+      <p>The project is published as <em>&ldquo;Interference Mitigation Using Software-Defined Network Based Next-Generation Networks&rdquo;</em> &mdash; a title from the academic framing around it. The code is narrower and more concrete than that suggests: it detects and blocks ARP poisoning on an SDN. This page describes the code.</p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <span>ARP poisoning detection &amp; mitigation &middot; Ryu + Mininet</span>
+  <span>Read from source &mdash; app.py, topology.py, logic.txt</span>
+</footer>
+
+</div>
+</body>
+</html>

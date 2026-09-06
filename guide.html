@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="A plain-language guide to the ARP attack simulator: what each panel means, five things to try, and a jargon-free glossary.">
+<style>
+  :root{color-scheme:light dark}
+  body{margin:0}
+  img{max-width:100%}
+  [hidden]{display:none!important}
+</style>
+<title>What Am I Looking At?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+
+<style>
+:root{
+  --paper:#E8ECEE; --surface:#F7F9FA; --raised:#FFFFFF;
+  --ink:#151C24; --ink-2:#47555F; --ink-3:#64717B;
+  --rule:#C9D2D7; --rule-soft:#DCE2E6;
+  --accent:#0D6B84; --accent-soft:rgba(13,107,132,.09); --accent-line:rgba(13,107,132,.34);
+  --alarm:#A93A2A; --alarm-soft:rgba(169,58,42,.10); --alarm-line:rgba(169,58,42,.36);
+  --trust:#2C6E52; --trust-soft:rgba(44,110,82,.11);
+  --f-display:'Archivo','Helvetica Neue',Arial,sans-serif;
+  --f-body:'Source Serif 4',Georgia,serif;
+  --f-mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  --measure:40rem;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#101619; --surface:#182026; --raised:#1D262C;
+    --ink:#E4EAED; --ink-2:#A9B6BD; --ink-3:#8695A0;
+    --rule:#2C3941; --rule-soft:#242E35;
+    --accent:#3FA9C6; --accent-soft:rgba(63,169,198,.12); --accent-line:rgba(63,169,198,.38);
+    --alarm:#E3705C; --alarm-soft:rgba(227,112,92,.13); --alarm-line:rgba(227,112,92,.38);
+    --trust:#63BC90; --trust-soft:rgba(99,188,144,.13);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#101619; --surface:#182026; --raised:#1D262C;
+  --ink:#E4EAED; --ink-2:#A9B6BD; --ink-3:#8695A0;
+  --rule:#2C3941; --rule-soft:#242E35;
+  --accent:#3FA9C6; --accent-soft:rgba(63,169,198,.12); --accent-line:rgba(63,169,198,.38);
+  --alarm:#E3705C; --alarm-soft:rgba(227,112,92,.13); --alarm-line:rgba(227,112,92,.38);
+  --trust:#63BC90; --trust-soft:rgba(99,188,144,.13);
+}
+
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:17.5px;line-height:1.7;-webkit-font-smoothing:antialiased}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:2px}
+.skip{position:absolute;left:-9999px;background:var(--accent);color:#fff;padding:.6rem 1rem;font-family:var(--f-mono);font-size:.8rem;z-index:60}
+.skip:focus{left:0;top:0}
+
+.shell{max-width:58rem;margin:0 auto;padding:0 1.5rem 5rem}
+.col{max-width:var(--measure)}
+p{margin:0 0 1.1em}
+p:last-child{margin-bottom:0}
+a{color:var(--accent);text-underline-offset:3px}
+strong{font-weight:600}
+
+.eyebrow{font-family:var(--f-mono);font-size:.7rem;font-weight:500;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);margin:0 0 .9rem}
+
+header.mast{padding:3.2rem 0 2.4rem;border-bottom:1px solid var(--rule);margin-bottom:3rem}
+h1{font-family:var(--f-display);font-weight:800;font-size:clamp(2.3rem,7vw,3.9rem);line-height:1;letter-spacing:-.03em;margin:0 0 1rem;text-wrap:balance}
+.standfirst{font-size:clamp(1.1rem,2.2vw,1.3rem);line-height:1.55;color:var(--ink-2);max-width:33rem;margin:0}
+
+section{margin-bottom:3.8rem;scroll-margin-top:1.5rem}
+h2{font-family:var(--f-display);font-weight:700;font-size:clamp(1.55rem,3.4vw,2.1rem);line-height:1.14;letter-spacing:-.018em;margin:0 0 1.2rem;text-wrap:balance}
+h3{font-family:var(--f-display);font-weight:600;font-size:1.06rem;margin:2rem 0 .6rem}
+
+.story{
+  border-left:3px solid var(--accent-line);background:var(--accent-soft);
+  padding:1.3rem 1.5rem;border-radius:0 5px 5px 0;margin:2rem 0;
+}
+.story p{font-style:italic;color:var(--ink-2)}
+.story p:first-child{margin-top:0}
+
+/* map figure */
+figure{margin:2.4rem 0}
+.figwrap{background:var(--surface);border:1px solid var(--rule-soft);border-radius:6px;padding:1.3rem 1.1rem;overflow-x:auto}
+figure svg{display:block;width:100%;height:auto;min-width:520px}
+figcaption{font-family:var(--f-mono);font-size:.73rem;color:var(--ink-3);margin-top:.85rem;line-height:1.6}
+.map .zone{fill:var(--raised);stroke:var(--rule);stroke-width:1.3}
+.map .zt{fill:var(--ink);font-family:var(--f-display);font-weight:600;font-size:12.5px}
+.map .zs{fill:var(--ink-3);font-family:var(--f-mono);font-size:9.5px}
+.map .badge{fill:var(--accent)}
+.map .bt{fill:#fff;font-family:var(--f-display);font-weight:700;font-size:11px}
+
+/* parts list */
+.parts{list-style:none;margin:2rem 0;padding:0;display:grid;gap:1.3rem}
+.parts li{display:grid;grid-template-columns:1.9rem minmax(0,1fr);gap:0 1rem;align-items:start}
+.parts .num{width:1.65rem;height:1.65rem;border-radius:50%;background:var(--accent);color:#fff;
+  font-family:var(--f-display);font-weight:700;font-size:.78rem;display:grid;place-items:center;margin-top:.25rem}
+.parts h3{margin:0 0 .25rem;font-size:1.02rem}
+.parts p{margin:0;color:var(--ink-2);font-size:1rem}
+
+/* experiments */
+.exp{display:grid;gap:1.1rem;margin:2.2rem 0}
+.card{background:var(--surface);border:1px solid var(--rule-soft);border-radius:6px;overflow:hidden}
+.card.hot{border-color:var(--alarm-line)}
+.card-hd{display:flex;flex-wrap:wrap;align-items:baseline;gap:.7rem;padding:.85rem 1.15rem;background:var(--raised);border-bottom:1px solid var(--rule-soft)}
+.card.hot .card-hd{background:var(--alarm-soft);border-bottom-color:var(--alarm-line)}
+.card-n{font-family:var(--f-mono);font-size:.66rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.card.hot .card-n{color:var(--alarm)}
+.card-t{font-family:var(--f-display);font-weight:600;font-size:1rem}
+.card-body{padding:1.1rem 1.15rem}
+.card-body p{margin:0 0 .8em;font-size:1rem;color:var(--ink-2)}
+.card-body p:last-child{margin-bottom:0}
+
+.do{display:flex;flex-wrap:wrap;gap:.45rem;align-items:center;margin:0 0 1rem}
+.do .lbl{font-family:var(--f-mono);font-size:.64rem;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-right:.3rem}
+.key{font-family:var(--f-mono);font-size:.74rem;font-weight:500;background:var(--accent-soft);color:var(--accent);
+  border:1px solid var(--accent-line);border-radius:4px;padding:.25rem .55rem;white-space:nowrap}
+.key.red{background:var(--alarm-soft);color:var(--alarm);border-color:var(--alarm-line)}
+.watch{border-top:1px solid var(--rule-soft);margin-top:1rem;padding-top:.9rem}
+.watch .lbl{font-family:var(--f-mono);font-size:.64rem;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);display:block;margin-bottom:.4rem}
+.watch p{font-size:.97rem;margin:0}
+
+/* glossary */
+.gloss{margin:2rem 0;border-top:1px solid var(--rule)}
+.gterm{display:grid;grid-template-columns:minmax(0,1fr);gap:.2rem;padding:1.05rem 0;border-bottom:1px solid var(--rule-soft)}
+@media(min-width:44rem){.gterm{grid-template-columns:12rem minmax(0,1fr);gap:0 2rem;align-items:baseline}}
+.gterm dt{font-family:var(--f-display);font-weight:600;font-size:1rem;color:var(--ink)}
+.gterm dt span{display:block;font-family:var(--f-mono);font-size:.7rem;font-weight:400;color:var(--ink-3);margin-top:.15rem}
+.gterm dd{margin:0;font-size:1rem;color:var(--ink-2);line-height:1.6}
+
+/* next */
+.next{display:grid;gap:.8rem;margin:2rem 0}
+@media(min-width:40rem){.next{grid-template-columns:1fr 1fr}}
+.nlink{display:block;text-decoration:none;background:var(--surface);border:1px solid var(--rule-soft);
+  border-radius:6px;padding:1.1rem 1.2rem;transition:border-color .14s,background .14s}
+.nlink:hover{border-color:var(--accent-line);background:var(--accent-soft)}
+.nlink .k{font-family:var(--f-mono);font-size:.66rem;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);display:block;margin-bottom:.35rem}
+.nlink .t{font-family:var(--f-display);font-weight:600;font-size:1.05rem;color:var(--accent);display:block;margin-bottom:.3rem}
+.nlink .d{font-size:.94rem;color:var(--ink-2);line-height:1.5}
+
+footer{border-top:1px solid var(--rule);padding-top:1.5rem;font-family:var(--f-mono);font-size:.72rem;color:var(--ink-3)}
+</style>
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<div class="shell">
+
+<header class="mast">
+  <p class="eyebrow">A plain-language guide to the simulator</p>
+  <h1>What Am I Looking At?</h1>
+  <p class="standfirst">No networking background needed. This page explains the story the simulator is telling, what each panel on it means, and five things to try &mdash; in order.</p>
+</header>
+
+<main id="main">
+
+<section>
+  <div class="col">
+    <h2>The one-sentence version</h2>
+    <p>Four computers are plugged into one box. One of them lies about who it is so that it can read other people&rsquo;s messages &mdash; and a small program is watching for exactly that lie.</p>
+  </div>
+
+  <div class="col">
+    <div class="story">
+      <p>Think of an office building with four rooms and one mailroom. Post doesn&rsquo;t go to <em>rooms</em>, it goes to <em>people</em> &mdash; so the mailroom has to keep track of who is in which room.</p>
+      <p>The way it keeps track is embarrassingly trusting: anybody can walk in and say &ldquo;I&rsquo;m in room 3 now.&rdquo; Nobody asks for ID. The mailroom crosses out the old note and writes the new one.</p>
+      <p>So the person in room 1 walks in and says &ldquo;actually, I&rsquo;m room 3.&rdquo; From then on, room 3&rsquo;s post is handed to them. They read it, then quietly pass it along, so nobody notices anything is wrong.</p>
+      <p>This project adds a doorman who has been there for years. He can&rsquo;t check anyone&rsquo;s ID either &mdash; but he <em>remembers</em>. He knows the person now claiming room 3 is the same person who has walked in through door 1 as room 1 every single day. That&rsquo;s enough to catch them.</p>
+    </div>
+    <p>That is genuinely the whole idea. The rest is vocabulary.</p>
+  </div>
+</section>
+
+<section>
+  <div class="col">
+    <h2>The five things on screen</h2>
+    <p>The simulator is one page with five areas. Here is what each one is for.</p>
+  </div>
+
+  <figure>
+    <div class="figwrap">
+      <svg class="map" viewBox="0 0 760 424" role="img" aria-label="A map of the simulator layout: controls across the top, the network picture on the left, the checklist and log stacked on the right, and the memory tables across the bottom.">
+        <rect class="zone" x="20" y="18" width="720" height="46" rx="4"/>
+        <circle class="badge" cx="46" cy="41" r="11"/>
+        <text class="bt" x="46" y="45" text-anchor="middle">1</text>
+        <text class="zt" x="70" y="38">The buttons</text>
+        <text class="zs" x="70" y="53">make things happen</text>
+
+        <rect class="zone" x="20" y="78" width="452" height="192" rx="4"/>
+        <circle class="badge" cx="46" cy="101" r="11"/>
+        <text class="bt" x="46" y="105" text-anchor="middle">2</text>
+        <text class="zt" x="70" y="98">The network picture</text>
+        <text class="zs" x="70" y="113">watch messages travel</text>
+        <text class="zs" x="70" y="150">four computers, one switch,</text>
+        <text class="zs" x="70" y="166">one watching program</text>
+
+        <rect class="zone" x="486" y="78" width="254" height="86" rx="4"/>
+        <circle class="badge" cx="512" cy="101" r="11"/>
+        <text class="bt" x="512" y="105" text-anchor="middle">3</text>
+        <text class="zt" x="536" y="98">The checklist</text>
+        <text class="zs" x="536" y="113">what it&rsquo;s deciding</text>
+
+        <rect class="zone" x="486" y="178" width="254" height="92" rx="4"/>
+        <circle class="badge" cx="512" cy="201" r="11"/>
+        <text class="bt" x="512" y="205" text-anchor="middle">4</text>
+        <text class="zt" x="536" y="198">The log</text>
+        <text class="zs" x="536" y="213">what it says out loud</text>
+
+        <rect class="zone" x="20" y="284" width="720" height="52" rx="4"/>
+        <circle class="badge" cx="46" cy="310" r="11"/>
+        <text class="bt" x="46" y="314" text-anchor="middle">5</text>
+        <text class="zt" x="70" y="307">The switch&rsquo;s standing orders</text>
+        <text class="zs" x="70" y="322">rules it follows without asking</text>
+
+        <rect class="zone" x="20" y="350" width="352" height="52" rx="4"/>
+        <text class="zt" x="40" y="373">The memory</text>
+        <text class="zs" x="40" y="388">who is where</text>
+
+        <rect class="zone" x="388" y="350" width="352" height="52" rx="4"/>
+        <text class="zt" x="408" y="373">What each computer believes</text>
+        <text class="zs" x="408" y="388">this is what the attack corrupts</text>
+      </svg>
+    </div>
+    <figcaption>Roughly where things sit. On a narrow screen the panels stack instead of sitting side by side.</figcaption>
+  </figure>
+
+  <div class="col">
+    <ol class="parts">
+      <li>
+        <span class="num">1</span>
+        <div>
+          <h3>The buttons, along the top</h3>
+          <p>Nothing happens until you press something. The red button launches the attack; the two little switches turn the defence on and off; <strong>reset</strong> puts everything back.</p>
+        </div>
+      </li>
+      <li>
+        <span class="num">2</span>
+        <div>
+          <h3>The network picture</h3>
+          <p>Four computers along the bottom (h1, h2, h3, h4), the switch they all plug into in the middle, and the watching program at the top. Little coloured boxes travel along the lines &mdash; those are messages. Blue ones are address questions and answers, red ones are lies.</p>
+        </div>
+      </li>
+      <li>
+        <span class="num">3</span>
+        <div>
+          <h3>The checklist</h3>
+          <p>Every time the program is asked about a message, it works down the same seven steps. They light up one at a time so you can see which decision it is making. Step 6 turning red means it caught something.</p>
+        </div>
+      </li>
+      <li>
+        <span class="num">4</span>
+        <div>
+          <h3>The log</h3>
+          <p>The black panel where the program narrates what it is doing. These are the real messages the actual program prints &mdash; not a friendly summary. The red lines are the alarm going off.</p>
+        </div>
+      </li>
+      <li>
+        <span class="num">5</span>
+        <div>
+          <h3>The tables along the bottom</h3>
+          <p>Three kinds of memory. The switch&rsquo;s standing orders, the program&rsquo;s record of who is who, and &mdash; the important one &mdash; what each computer <em>believes</em> about the others. When the attack succeeds, you will see a wrong belief appear in red.</p>
+        </div>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<section>
+  <div class="col">
+    <h2>Five things to try, in order</h2>
+    <p>Each one takes a few seconds. If the animation moves too fast, there is a speed control at the top right &mdash; set it to 0.5&times;.</p>
+  </div>
+
+  <div class="exp">
+
+    <div class="card">
+      <div class="card-hd"><span class="card-n">Try 1</span><span class="card-t">Watch the attack get caught</span></div>
+      <div class="card-body">
+        <p class="do"><span class="lbl">press</span><span class="key red">h1 forges ARP</span></p>
+        <p>h1 sends one message claiming to be h3. That is the entire attack &mdash; a single sentence, told once.</p>
+        <div class="watch">
+          <span class="lbl">watch for</span>
+          <p>A red box leaves h1. The checklist runs down to step 5, then <strong>step 6 turns red</strong>. A yellow box drops from the program into the switch &mdash; that is a new standing order. The line to h1 goes red and dashed with an ✕ through it. h1 is now cut off.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hd"><span class="card-n">Try 2</span><span class="card-t">Turn the blocking off and see what the attack really does</span></div>
+      <div class="card-body">
+        <p class="do"><span class="lbl">press</span><span class="key">reset</span><span class="key">turn MITIGATION off</span><span class="key red">h1 forges ARP</span></p>
+        <p>Now the program still notices &mdash; the alarm still goes off in the log &mdash; but it doesn&rsquo;t do anything about it. The lie gets delivered.</p>
+        <div class="watch">
+          <span class="lbl">watch for</span>
+          <p>The bottom-right table, <em>what each computer believes</em>. h4&rsquo;s entry for h3 turns <strong>red and now names h1</strong>. h4 has been fooled. It thinks h1 is h3.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card hot">
+      <div class="card-hd"><span class="card-n">Try 3</span><span class="card-t">See the eavesdropping actually happen</span></div>
+      <div class="card-body">
+        <p class="do"><span class="lbl">press</span><span class="key">h4 &rarr; h3 ping</span></p>
+        <p>h4 tries to send a normal message to h3. It has been fooled, so it sends it to the wrong place.</p>
+        <div class="watch">
+          <span class="lbl">watch for</span>
+          <p>The message goes to <strong>h1</strong>, not h3. Then h1 passes it on to h3 anyway. That second hop is the whole point of the attack: h1 has read the message, and because it forwarded it, <strong>neither h3 nor h4 notices anything is wrong</strong>. This is what people mean by a man in the middle.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hd"><span class="card-n">Try 4</span><span class="card-t">Turn the whole defence off</span></div>
+      <div class="card-body">
+        <p class="do"><span class="lbl">press</span><span class="key">reset</span><span class="key">turn DETECTION off</span><span class="key red">h1 forges ARP</span></p>
+        <p>This is what the network looked like before anyone wrote this project.</p>
+        <div class="watch">
+          <span class="lbl">watch for</span>
+          <p>The log says nothing. No alarm, no red line, no record. The attack succeeds in total silence &mdash; which is exactly why it is dangerous, and why detecting it is worth the effort.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hd"><span class="card-n">Try 5</span><span class="card-t">Find the flaw in the defence</span></div>
+      <div class="card-body">
+        <p class="do"><span class="lbl">press</span><span class="key">reset</span><span class="key red">h1 forges ARP</span><span class="key">skip 5 min</span></p>
+        <p>Block the attacker properly, then let five minutes of quiet pass.</p>
+        <div class="watch">
+          <span class="lbl">watch for</span>
+          <p>The red standing order <strong>disappears on its own</strong> and h1&rsquo;s line goes back to normal. The block was never permanent. An attacker who simply waits gets let back in, and nobody is told. This is a real weakness in the project, not a bug in the simulator.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="col">
+    <h3>One more, if you&rsquo;re curious</h3>
+    <p>Press <strong>reset</strong>, then <strong>pingAll &mdash; learn bindings</strong>. You will watch the memory fill up from nothing as the computers introduce themselves to each other. This is the calm before any attack, and it is where the program learns the facts it later uses to catch the liar.</p>
+  </div>
+</section>
+
+<section>
+  <div class="col">
+    <h2>Words you&rsquo;ll see</h2>
+    <p>Everything on the screen in one of these terms. None of them are as complicated as they look.</p>
+
+    <dl class="gloss">
+      <div class="gterm">
+        <dt>MAC address <span>00:00:00:00:00:01</span></dt>
+        <dd>The permanent serial number stamped on a network card at the factory. Think of it as a passport number &mdash; it identifies the machine itself and doesn&rsquo;t normally change.</dd>
+      </div>
+      <div class="gterm">
+        <dt>IP address <span>192.168.1.1</span></dt>
+        <dd>The address the machine is using <em>right now</em>, on this particular network. More like a room number than a passport &mdash; it can be reassigned.</dd>
+      </div>
+      <div class="gterm">
+        <dt>ARP</dt>
+        <dd>The question &ldquo;who currently has 192.168.1.4?&rdquo; shouted to everyone, and the answer that comes back. There is no ID check on the answer. This missing check is the entire vulnerability.</dd>
+      </div>
+      <div class="gterm">
+        <dt>Port</dt>
+        <dd>The physical socket on the switch that a cable plugs into. h1 is on port 1, h2 on port 2, and so on. A port tells you <em>where</em> something is plugged in, which is a fact an attacker can&rsquo;t easily fake.</dd>
+      </div>
+      <div class="gterm">
+        <dt>Switch</dt>
+        <dd>The box in the middle that all four computers plug into. Its only job is moving messages to the right socket.</dd>
+      </div>
+      <div class="gterm">
+        <dt>Controller</dt>
+        <dd>The program at the top of the picture that tells the switch what to do. This project <em>is</em> the controller &mdash; about 180 lines of Python.</dd>
+      </div>
+      <div class="gterm">
+        <dt>Flow rule <span>the standing orders</span></dt>
+        <dd>An instruction stored in the switch: &ldquo;when you see this kind of message, do this.&rdquo; The switch follows them without asking anyone, which is what makes it fast.</dd>
+      </div>
+      <div class="gterm">
+        <dt>Priority</dt>
+        <dd>When two standing orders both apply, the higher number wins. The block on the attacker is priority 101, which is deliberately higher than everything else &mdash; that is <em>why</em> it works.</dd>
+      </div>
+      <div class="gterm">
+        <dt>Binding</dt>
+        <dd>One machine&rsquo;s three facts held together: its serial number, its current address, and the socket it&rsquo;s plugged into. The whole defence is checking that these three keep agreeing with each other.</dd>
+      </div>
+    </dl>
+  </div>
+</section>
+
+<section>
+  <div class="col">
+    <h2>Where to go next</h2>
+    <div class="next">
+      <a class="nlink" href="simulator.html">
+        <span class="k">Hands on</span>
+        <span class="t">Back to the simulator</span>
+        <span class="d">Try the five experiments above.</span>
+      </a>
+      <a class="nlink" href="index.html">
+        <span class="k">Deeper</span>
+        <span class="t">The full walkthrough</span>
+        <span class="d">Architecture diagrams, the real code, and the honest limitations. More technical.</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <span>A guide to the ARP poisoning simulator &middot; no networking background assumed</span>
+</footer>
+
+</div>
+</body>
+</html>
